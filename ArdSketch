@@ -1,0 +1,146 @@
+#include <SoftwareSerial.h>
+#include <IRremote.h>
+
+#define _SONYTV 1
+#define _SETUP 2
+#define _AVRYAM 3
+#define _POWPR 0
+#define _TV "TV"
+#define _SET "SET"
+#define _AVR "AVR"
+#define _POW "POW"
+#define _POWON 1
+#define _POWOFF 2
+#define _SETCDLEN 24
+#define _YAMCDLEN 32
+#define _TVCDLEN 12
+#define _DEFCDLEN 0
+
+char cmd_terminator = '~';
+char test[100];
+boolean devicestate = false;
+
+SoftwareSerial Genotronex(10, 11);
+IRsend irsend;
+
+int recledpin = 13;
+int sndledpin = 12;
+
+void setup() {
+  Genotronex.begin(9600);
+  Serial.begin(19200);
+  pinMode(recledpin, OUTPUT);
+  pinMode(sndledpin, OUTPUT);
+  digitalWrite(recledpin, LOW);
+  digitalWrite(sndledpin, LOW);
+  Genotronex.setTimeout(2000);
+}
+
+void loop() {
+  digitalWrite(recledpin, LOW);
+  if (Genotronex.available() != 0) {
+    digitalWrite(recledpin, HIGH);
+    String instring = Genotronex.readStringUntil(cmd_terminator);
+    Serial.println(instring);
+    if (instring.startsWith(_TV)) {
+      Serial.println("this is a tv code");
+      parseCmdAndSend(instring, _SONYTV, _TVCDLEN);
+    } else if (instring.startsWith(_AVR)) {
+      Serial.println("this is a avr code");
+      parseCmdAndSend(instring, _AVRYAM, _YAMCDLEN);
+    } else if (instring.startsWith(_SET)) {
+      Serial.println("this is a set code");
+      parseCmdAndSend(instring, _SETUP, _SETCDLEN);
+    } else if (instring.startsWith(_POW)) {
+      //Serial.println("Power cmd received");
+      parseCmdAndSend(instring, _POWPR, _DEFCDLEN);
+    } else {
+      Serial.println("Unknown Device");
+    }
+  }
+
+}
+
+void parseCmdAndSend(String cmdstring, int protocol, int codelen) {
+   Serial.println("from parse");
+  cmdstring.toCharArray(test, cmdstring.length() + 1);
+     char *token;
+     char *rest = test;
+     char *pctr;
+//     char t = token;
+
+  while (( token = strtok_r(rest, "|", &rest))) {
+    digitalWrite(recledpin, LOW);
+    digitalWrite(sndledpin, LOW);
+    
+    if (isDigit(*token)) {
+      
+      unsigned long lo = (long) strtoul(token, &pctr, 0);
+      
+      switch (protocol) {
+        case _SONYTV:
+          Serial.print("Sending TV codes: ");
+          Serial.println(lo);
+          
+          break;
+        case _SETUP:
+          Serial.print("Sending SETUP BOX codes: ");
+          //Serial.println(lo);
+          sendRC6code(lo, codelen, "ON");
+          delay(500);
+          break;
+        case _AVRYAM:
+          Serial.print("Sending AVR codes: ");
+          Serial.println(lo);
+          break;
+        case _POWPR:
+          Serial.println("Send Power Codes for all devices");
+          Serial.println(lo);
+          break;
+        default:
+          Serial.print("XUnknown device");
+          Serial.println(lo);
+          break;
+      }
+      
+    }
+    digitalWrite(recledpin, HIGH);
+    digitalWrite(sndledpin, LOW);
+    delay(100);
+  }
+}
+
+
+
+void sendRC6code(unsigned long cdval, int cdlen, String state) {
+  digitalWrite(sndledpin, HIGH);
+  Serial.println(cdval);
+  irsend.sendRC6(cdval, cdlen);
+  String temp = "Switching state Set Up Box - ";
+  temp.replace("state", state);
+  Serial.print(temp);
+  Serial.println(cdval);
+}
+
+void sendNECcode(unsigned long cdval, int cdlen, String state) {
+   
+  String temp = "Switching state Yamaha - ";
+  temp.replace("state", state);
+  irsend.sendNEC(cdval, cdlen);
+  Serial.print(temp);
+  Serial.println(cdval, HEX);
+}
+
+void sendSONY(unsigned long codeValue, int codeLen, String state) {
+
+  for (int i = 0; i < 3; i++) {
+    irsend.sendSony(0xa90, codeLen);
+    delay(40);
+  }
+
+  String temp = "Switching state TV & Yamaha - ";
+  temp.replace("state", state);
+  Serial.print(temp);
+  Serial.println(codeValue, HEX);
+
+}
